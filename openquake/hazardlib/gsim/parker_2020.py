@@ -22,10 +22,13 @@ Module exports :class:`ParkerEtAl2020SInter`
                :class:`ParkerEtAl2020SSlab`
                :class:`ParkerEtAl2020SSlabB`
 """
+"""
+This routine is modified to account for soil nonliearity in sigma model. The modified sigma is implements by Sanjay Bora: s.bora@gns.cri.nz."""
 import math
 
 import numpy as np
 from scipy.special import erf
+from scipy.interpolate import interp1d
 
 from openquake.baselib.general import CallableDict
 from openquake.hazardlib import const
@@ -306,6 +309,140 @@ def get_stddevs(C, rrup, vs30):
 
     return [np.sqrt(C["Tau"] ** 2 + phi_tot ** 2), C["Tau"], phi_tot]
 
+def get_nonlinear_stddevs(C, C_PGA, imt, pgar, rrup, vs30):
+    """
+    Get the nonlinear tau and phi terms for Parker's model. This routine is based upon Peter Stafford suggested implementation shared on slack, which is based on AG20 implementation.
+    However, note that in the median T>=3.0 there is no soil nonlinearity in the origianl model of Parker.
+    """
+    period = imt.period
+    # Linear Tau
+    tau_lin = C["Tau"]*np.ones(vs30.shape)
+    tau_lin_pga = C_PGA["Tau"]*np.ones(vs30.shape)
+
+    r1 = 200.0
+    r2 = 500.0
+
+    #Linear Phi
+    phi2_rv = np.zeros(len(vs30))
+    phi2_rv_pga = np.zeros(len(vs30))
+    for i, vs30i in enumerate(vs30):
+        if rrup[i] <= r1:
+            phi2_rv[i] = C["phi21"]
+            phi2_rv_pga[i] = C_PGA["phi21"]
+        elif rrup[i] >= r2:
+            phi2_rv[i] = C["phi22"]
+            phi2_rv_pga[i] = C_PGA["phi22"]
+        else:
+            phi2_rv[i] = ((C["phi22"] - C["phi21"]) / (math.log(r2) - math.log(r1))) * (math.log(rrup[i]) - math.log(r1)) + C["phi21"]
+            phi2_rv_pga[i] = ((C_PGA["phi22"] - C_PGA["phi21"]) / (math.log(r2) - math.log(r1))) * (math.log(rrup[i]) - math.log(r1)) + C_PGA["phi21"]
+
+    phi_lin = np.sqrt(phi2_rv)
+    phi_lin_pga = np.sqrt(phi2_rv_pga)
+
+    # Assume that the site response variability is constant with period.
+    phi_amp = 0.3
+    phi_B = np.sqrt(phi_lin**2 - phi_amp**2)
+    phi_B_pga = np.sqrt(phi_lin_pga**2 - phi_amp**2)
+
+    # correlation coefficients from AG20
+    periods_AG20 = [0.01, 0.02, 0.03, 0.05, 0.075, 0.10, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5, 0.6, 0.75, 1.0, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0, 6.0, 7.5, 10.0]
+    rho_Ws = [1.0, 0.99, 0.99, 0.97, 0.95, 0.92, 0.9, 0.87, 0.84, 0.82, 0.74, 0.66, 0.59, 0.5, 0.41, 0.33, 0.3, 0.27, 0.25, 0.22, 0.19, 0.17, 0.14, 0.1]
+    rho_Bs = [1.0, 0.99, 0.99, 0.985, 0.98, 0.97, 0.96, 0.94, 0.93, 0.91, 0.86, 0.8, 0.78, 0.73, 0.69, 0.62, 0.56, 0.52, 0.495, 0.43, 0.4, 0.37, 0.32, 0.28]
+
+    rho_W_itp = interp1d(np.log(periods_AG20), rho_Ws)
+    rho_B_itp = interp1d(np.log(periods_AG20), rho_Bs)
+    if period < 0.01:
+        rhoW = 1.0
+        rhoB = 1.0
+    else:
+        rhoW = rho_W_itp(np.log(period))
+        rhoB = rho_B_itp(np.log(period))
+
+    f2 = C["f4"] * (np.exp(C["f5"] * (np.minimum(vs30, CONSTANTS["vref_fnl"]) - CONSTANTS["Vb"])) - math.exp(C["f5"] * (CONSTANTS["vref_fnl"] - CONSTANTS["Vb"])))
+    #f2 = C["f4"] * (np.exp(C["f5"] * (np.minimum(vs30, 760.0) - 200.0)) - np.exp(C["f5"] * (760.0 - 200.0)))
+    f3 = CONSTANTS["f3"]
+
+    partial_f_pga = f2 * pgar / (pgar + f3)
+    partial_f_pga = partial_f_pga*np.ones(vs30.shape)
+
+    # nonlinear variance components
+    phi2_NL = phi_lin**2 + partial_f_pga**2 * phi_B_pga**2 + 2 * partial_f_pga * phi_B_pga*phi_B * rhoW
+    tau2_NL = tau_lin**2 + partial_f_pga**2 * tau_lin_pga**2 + 2 * partial_f_pga * tau_lin_pga*tau_lin * rhoB
+
+    #return [partial_f_pga, np.sqrt(tau2_NL), np.sqrt(phi2_NL)]
+    return [np.sqrt(tau2_NL + phi2_NL), np.sqrt(tau2_NL), np.sqrt(phi2_NL)]
+
+def get_sigma_epistemic (trt, region, imt):
+    ''' Currently the epistemic sigma model is applied to only Global model. As for NZ we are using only the global model.
+    Henec below the coefficients are just for the global model.'''
+
+    if region is None:
+        if trt == const.TRT.SUBDUCTION_INTRASLAB:
+            sigma_epsilon1 = 0.35
+            sigma_epsilon2 = 0.22
+            T1 = 0.15
+            T2 = 2
+        else:
+            sigma_epsilon1 = 0.4
+            sigma_epsilon2 = 0.4
+            T1 = 0.2
+            T2 = 0.4
+
+        period = imt.period
+        if period < 0.01:
+            sigma_epi = sigma_epsilon1
+        elif (period >= 0.01) & (period < T1):
+            sigma_epi = sigma_epsilon1
+        elif (period >= T1) & (period < T2):
+            per_ratio1 = np.log(period/T1)
+            per_ratio2 = np.log(T2/T1)
+            sigma_epi = sigma_epsilon1 - (sigma_epsilon1 - sigma_epsilon2)*(per_ratio1/per_ratio2)
+        else:
+            sigma_epi = sigma_epsilon2
+
+        return sigma_epi
+    else:
+        return 0.0
+
+def get_backarc_term(trt, imt, ctx):
+
+    """ The backarc correction factors to be applied with the ground motion prediction. In the NZ context, it is applied to only subduction intraslab events.
+    It is essentially the correction factor taken from BC Hydro 2016. Abrahamson et al. (2016) Earthquake Spectra.
+    The correction is applied only for backarc sites as function of distance."""
+
+    periods =  [0.0, 0.02, 0.05, 0.075, 0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5, 0.6, 0.75, 1.0, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0, 6.0, 7.5, 10.0]
+    theta7s = [1.0988, 1.0988, 1.2536, 1.4175, 1.3997, 1.3582, 1.1648, 0.994, 0.8821, 0.7046, 0.5799, 0.5021, 0.3687, 0.1746,
+       -0.082 , -0.2821, -0.4108, -0.4466, -0.4344, -0.4368, -0.4586, -0.4433, -0.4828]
+    theta8s = [-1.42, -1.42, -1.65, -1.8 , -1.8 , -1.69, -1.49, -1.3 , -1.18, -0.98, -0.82, -0.7 , -0.54, -0.34, -0.05,  0.12,  0.25,  0.3,
+        0.3,  0.3,  0.3,  0.3,  0.3]
+    period  = imt.period
+
+    theta7_itp = interp1d(np.log(periods[1:]), theta7s[1:])
+    theta8_itp = interp1d(np.log(periods[1:]), theta8s[1:])
+    # Note that there is no correction for PGV. Hence, I make theta7 and theta8 as 0 for periods < 0.
+    if period < 0:
+        theta7 = 0.0
+        theta8 = 0.0
+    elif (period >= 0 and period < 0.02):
+        theta7 = 1.0988
+        theta8 = -1.42
+    else:
+        theta7 = theta7_itp(np.log(period))
+        theta8 = theta8_itp(np.log(period))
+
+    dists = ctx.rrup
+
+    if trt == const.TRT.SUBDUCTION_INTRASLAB:
+        min_dist = 85.0
+        backarc = np.bool_(ctx.backarc)
+        f_faba = np.zeros_like(dists)
+        fixed_dists = dists[backarc]
+        fixed_dists[fixed_dists < min_dist] = min_dist
+        f_faba[backarc] = theta7 + theta8*np.log(fixed_dists/40.0)
+        return f_faba
+    else:
+        f_faba = np.zeros_like(dists)
+        return f_faba
 
 class ParkerEtAl2020SInter(GMPE):
     """
@@ -335,15 +472,17 @@ class ParkerEtAl2020SInter(GMPE):
     REQUIRES_DISTANCES = {'rrup'}
     REQUIRES_ATTRIBUTES = {'region', 'saturation_region', 'basin'}
 
-    def __init__(self, region=None, saturation_region=None, basin=None,
+    def __init__(self, region=None, saturation_region=None, basin=None, sigma_mu_epsilon=0.0, which_sigma = "Modified",
                  **kwargs):
         """
         Enable setting regions to prevent messy overriding
         and code duplication.
         """
         super().__init__(region=region, saturation_region=saturation_region,
-                         basin=basin, **kwargs)
+                         basin=basin, sigma_mu_epsilon = sigma_mu_epsilon, which_sigma = which_sigma, **kwargs)
         self.region = region
+        self.which_sigma = which_sigma
+        self.sigma_mu_epsilon = sigma_mu_epsilon
         if saturation_region is None:
             self.saturation_region = region
         else:
@@ -373,19 +512,27 @@ class ParkerEtAl2020SInter(GMPE):
             fp, fp_pga = _path_term(
                 trt, self.region, self.basin, self.SUFFIX,
                 C, C_PGA, ctx.mag, ctx.rrup, m_b)
+            fp_pga = fp_pga + get_backarc_term(trt, PGA(), ctx)  # The backarc term applied to path function for reference rock PGA.
             fd = _depth_scaling(trt, C, ctx)
             fd_pga = _depth_scaling(trt, C_PGA, ctx)
             fb = _basin_term(self.region, self.basin, C, ctx)
             flin = _linear_amplification(self.region, C, ctx.vs30)
             fnl = _non_linear_term(C, imt, ctx.vs30, fp_pga, fm_pga, c0_pga,
                                    fd_pga)
+            fba = get_backarc_term(trt, imt, ctx) # The backarc correction factor from BC Hydro at individual period.
 
             # The output is the desired median model prediction in LN units
             # Take the exponential to get PGA, PSA in g or the PGV in cm/s
-            mean[m] = fp + fnl + fb + flin + fm + c0 + fd
-
-            sig[m], tau[m], phi[m] = get_stddevs(C, ctx.rrup, ctx.vs30)
-
+            mean[m] = fp + fnl + fb + flin + fm + c0 + fd + fba
+            if self.sigma_mu_epsilon:
+                # Apply an epistmic adjustment factor. Currently, its applied to only global model.
+                mean[m] += (self.sigma_mu_epsilon * get_sigma_epistemic(trt, self.region, imt))
+            # The default sigma is modified sigma that accounts for soil nonliearity.
+            if self.which_sigma == "Modified":
+                pgar = np.exp(fp_pga + fm_pga + c0_pga + fd_pga) # Note that the backarc correction is already applied in f_pga.
+                sig[m], tau[m], phi[m] = get_nonlinear_stddevs(C, C_PGA, imt, pgar, ctx.rrup, ctx.vs30)
+            else:
+                sig[m], tau[m], phi[m] = get_stddevs(C, ctx.rrup, ctx.vs30)
     COEFFS = CoeffsTable(sa_damping=5, table="""\
     IMT    c0    AK_c0        Aleutian_c0  Cascadia_c0 CAM_N_c0     CAM_S_c0    JP_Pac_c0    JP_Phi_c0    SA_N_c0     SA_S_c0      TW_E_c0      TW_W_c0     c0slab AK_c0slab Aleutian_c0slab Cascadia_c0slab CAM_c0slab JP_c0slab SA_N_c0slab SA_S_c0slab TW_c0slab  c1     c1slab b4   a0        AK_a0     CAM_a0    JP_a0     SA_a0     TW_a0     a0slab    AK_a0slab Cascadia_a0slab CAM_a0slab JP_a0slab SA_a0slab TW_a0slab c4     c5    c6    c4slab c5slab c6slab d      m      db   V2  JP_s1  TW_s1  s2     AK_s2  Cascadia_s2 JP_s2  SA_s2  TW_s2  f4       f4slab   f5       J_e1   J_e2   J_e3  C_e1   C_e2   C_e3   del_None del_Seattle Tau   phi21 phi22  phi2V  VM phi2S2S,0 a1    phi2SS,1 phi2SS,2 a2
     pgv    8.097 9.283796298  8.374796298  7.728       7.046899908  7.046899908 8.772125851  7.579125851  8.528671414 8.679671414  7.559846279  7.559846279 13.194 12.79     13.6            12.874          12.81      13.248    12.754      12.927      13.516    -1.661 -2.422  0.1 -0.00395  -0.00404  -0.00153  -0.00239  -0.000311 -0.00514  -0.0019   -0.00238  -0.00109        -0.00192   -0.00215  -0.00192   -0.00366  1.336 -0.039 1.844 1.84  -0.05   0.8    0.2693 0.0252 67  850 -0.738 -0.454 -0.601 -1.031 -0.671      -0.738 -0.681 -0.59  -0.31763 -0.31763 -0.0052  -0.137  0.137  0.091 0      0.115  0.068 -0.115    0           0.477 0.348 0.288 -0.179 423 0.142     0.047 0.153    0.166    0.011
@@ -440,6 +587,7 @@ class ParkerEtAl2020SSlab(ParkerEtAl2020SInter):
 
     # slab also requires hypo_depth
     REQUIRES_RUPTURE_PARAMETERS = {'mag', 'hypo_depth'}
+    REQUIRES_SITES_PARAMETERS = {'vs30', 'backarc'}
 
     # constant table suffix
     SUFFIX = "slab"
