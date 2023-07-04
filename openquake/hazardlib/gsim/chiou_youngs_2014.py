@@ -402,12 +402,14 @@ def get_tau(C, mag):
     return C['tau1'] + (C['tau2'] - C['tau1']) / 1.5 * mag_test
 
 
-def get_mean_stddevs(name, C, ctx):
+def get_mean_stddevs(name, C, ctx, adj_df):
     """
     Return mean and standard deviation values
     """
     # Get ground motion on reference rock
     ln_y_ref = get_ln_y_ref(name, C, ctx)
+    if adj_df is not None:
+        ln_y_ref += adj_df
     y_ref = np.exp(ln_y_ref)
     # Get the site amplification
     # Get basin depth
@@ -497,7 +499,7 @@ class ChiouYoungs2014(GMPE):
         """
         name = self.__class__.__name__
         # reference to page 1144, PSA might need PGA value
-        pga_mean, pga_sig, pga_tau, pga_phi = get_mean_stddevs(name, self.COEFFS[PGA()], ctx)
+        pga_mean, pga_sig, pga_tau, pga_phi = get_mean_stddevs(name, self.COEFFS[PGA()], ctx, None)
         for m, imt in enumerate(imts):
             if repr(imt) == "PGA":
                 mean[m] = pga_mean
@@ -505,8 +507,9 @@ class ChiouYoungs2014(GMPE):
                     mean[m] += (self.sigma_mu_epsilon*get_epistemic_sigma(ctx))
                 sig[m], tau[m], phi[m] = pga_sig, pga_tau, pga_phi
             else:
+                T = imt.period
                 imt_mean, imt_sig, imt_tau, imt_phi = \
-                    get_mean_stddevs(name, self.COEFFS[imt], ctx)
+                    get_mean_stddevs(name, self.COEFFS[imt], ctx, self.kwargs['kwargs']['period_specific_df'].loc[:, f"adj_pSA_{str(T).replace('.', 'p')}"])
                 # reference to page 1144
                 # Predicted PSA value at T ≤ 0.3s should be set equal to the value of PGA
                 # when it falls below the predicted PGA

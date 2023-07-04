@@ -435,6 +435,8 @@ class CampbellBozorgnia2014(GMPE):
                 idx = mean[m] <= pga
                 mean[m, idx] = pga[idx]
 
+
+
             # Get stddevs for PGA on basement rock
             tau_lnpga_b = _get_taulny(C_PGA, ctx.mag)
             phi_lnpga_b = np.sqrt(_get_philny(C_PGA, ctx.mag) ** 2. -

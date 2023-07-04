@@ -360,8 +360,10 @@ def get_mean_stddevs(T, mu_branch, sigma_branch, adjust_c1, adjust_chm, adjust_c
     # Get ground motion on reference rock
     ln_y_ref = get_ln_y_ref(T, C, ctx, mu_branch, adjust_c1, adjust_chm, adjust_c7, adjust_cg1)
     # add ajustment factor
-    adj_ln_y_ref = ln_y_ref + adj_df.loc[:, f"adj_pSA_{str(T).replace('.', 'p')}"]
-    y_ref = np.exp(adj_ln_y_ref)
+    if adj_df is not None:
+        ln_y_ref += adj_df
+        #ln_y_ref += adj_df.loc[:, f"adj_pSA_{str(T).replace('.', 'p')}"]
+    y_ref = np.exp(ln_y_ref)
     # Get the site amplification
     # Get basin depth
     dz1pt0 = _get_centered_z1pt0(ctx)
@@ -447,13 +449,13 @@ class Stafford2022(GMPE):
                 print("Invalid IMT provided. The model does not predict ground motions for PGV.")
                 sig[m], tau[m], phi[m] = None, None, None
             elif repr(imt) == "PGA":
-                pga_mean, pga_sig, pga_tau, pga_phi = get_mean_stddevs(SA(0.01).period, self.mu_branch, self.sigma_branch, self.adjust_c1, self.adjust_chm, self.adjust_c7, self.adjust_cg1, self.COEFFS[SA(0.01)], ctx)
+                pga_mean, pga_sig, pga_tau, pga_phi = get_mean_stddevs(SA(0.01).period, self.mu_branch, self.sigma_branch, self.adjust_c1, self.adjust_chm, self.adjust_c7, self.adjust_cg1, self.COEFFS[SA(0.01)], ctx, None)
                 # Peter has used T = 0.01 as the period for PGA because the coefficients (for 0.01s and PGA) are identical.
                 mean[m] = pga_mean
                 sig[m], tau[m], phi[m] = pga_sig, pga_tau, pga_phi
             else:
                 T = imt.period
-                imt_mean, imt_sig, imt_tau, imt_phi = get_mean_stddevs(T, self.mu_branch, self.sigma_branch, self.adjust_c1, self.adjust_chm, self.adjust_c7, self.adjust_cg1,  self.COEFFS[imt], ctx, self.kwargs['kwargs']['period_specific_df'])
+                imt_mean, imt_sig, imt_tau, imt_phi = get_mean_stddevs(T, self.mu_branch, self.sigma_branch, self.adjust_c1, self.adjust_chm, self.adjust_c7, self.adjust_cg1,  self.COEFFS[imt], ctx, self.kwargs['kwargs']['period_specific_df'].loc[:, f"adj_pSA_{str(T).replace('.', 'p')}"])
                 mean[m] = imt_mean
                 sig[m], tau[m], phi[m] = imt_sig, imt_tau, imt_phi
 
