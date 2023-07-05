@@ -471,6 +471,13 @@ class AbrahamsonEtAl2014(GMPE):
             # term calculation
             sa1180 = np.exp(_get_sa_at_1180(self.region, C, imt, ctx))
 
+            # adjust the reference rock value with non-ergodic site term so that
+            # the adjustment is accounted for in nonlinear site response model
+            if imt.string[:2] == "SA":
+                T = imt.period
+                sa1180 += self.kwargs['kwargs']['period_specific_df'].loc[:, f"adj_pSA_{str(T).replace('.', 'p')}"]
+
+
             # For debugging purposes
             # f1 = _get_basic_term(C, ctx)
             # f4 = _get_hanging_wall_term(C, ctx)
@@ -488,6 +495,11 @@ class AbrahamsonEtAl2014(GMPE):
                        _get_faulting_style_term(C, ctx) +
                        _get_soil_depth_term(self.region, C, ctx.z1pt0,
                                             ctx.vs30))
+
+            #adjust the mean prediction with adjustment factor
+            if imt.string[:2] == "SA":
+                T = imt.period
+                mean[m] += self.kwargs['kwargs']['period_specific_df'].loc[:, f"adj_pSA_{str(T).replace('.', 'p')}"]
 
             mean[m] += _get_regional_term(
                 self.region, C, imt, ctx.vs30, ctx.rrup)

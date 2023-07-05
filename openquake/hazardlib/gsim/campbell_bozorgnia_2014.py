@@ -400,6 +400,12 @@ class CampbellBozorgnia2014(GMPE):
             C = self.COEFFS[imt]
             # Get mean and standard deviations for IMT
             mean[m] = get_mean_values(self.SJ, C, ctx, pga1100)
+
+            # add the non-ergodic adjustment factor
+            if imt.string[:2] == "SA":
+                T = imt.period
+                mean[m] += self.kwargs['kwargs']['period_specific_df'].loc[:, f"adj_pSA_{str(T).replace('.', 'p')}"]
+
             if self.sigma_mu_epsilon:
                 mean[m] += (self.sigma_mu_epsilon*get_epistemic_sigma(ctx))
             if imt.string[:2] == "SA" and imt.period < 0.25:

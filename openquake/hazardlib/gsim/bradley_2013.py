@@ -523,6 +523,15 @@ class Bradley2013(GMPE):
             # intensity on a reference soil is used for both mean
             # and stddev calculations.
             ln_y_ref = _get_ln_y_ref(trt, ctx, C)
+
+            # adjust the ln_y_ref value for non-ergodic adjustment so that it
+            # is accounted for in NL site response model and in the mean prediction
+            # which adds to ln_y_ref
+            if imt.string[:2] == "SA":
+                T = imt.period
+                ln_y_ref += self.kwargs['kwargs']['period_specific_df'].loc[:, f"adj_pSA_{str(T).replace('.', 'p')}"]
+
+
             # exp1 and exp2 are parts of eq. 7
             exp1 = np.exp(C['phi3'] * (ctx.vs30.clip(-np.inf, 1130) - 360))
             exp2 = np.exp(C['phi3'] * (1130 - 360))

@@ -359,7 +359,8 @@ def get_mean_stddevs(T, mu_branch, sigma_branch, adjust_c1, adjust_chm, adjust_c
     """
     # Get ground motion on reference rock
     ln_y_ref = get_ln_y_ref(T, C, ctx, mu_branch, adjust_c1, adjust_chm, adjust_c7, adjust_cg1)
-    # add ajustment factor
+    # add non-ergodic ajustment factor to ln_y_ref so that it is accounted for in
+    # NL site response model and in mean prediction
     if adj_df is not None:
         ln_y_ref += adj_df
         #ln_y_ref += adj_df.loc[:, f"adj_pSA_{str(T).replace('.', 'p')}"]

@@ -311,7 +311,7 @@ class BooreEtAl2014(GMPE):
                                   C, pga_rock, ctx, imt.period, ctx.rjb))
 
             #add adjustment factor
-            if repr(imt) == "PGA":
+            if imt.string[:2] == "SA":
                 T = imt.period
                 mean[m] += self.kwargs['kwargs']['period_specific_df'].loc[:, f"adj_pSA_{str(T).replace('.', 'p')}"]
 
