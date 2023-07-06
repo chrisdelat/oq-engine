@@ -293,6 +293,11 @@ class Atkinson2022Crust(GMPE):
 
             mean[m] = mean[m] - np.log(981.0) # Convert the cm/s^2 to g.
 
+            # add the non-ergodic adjustment factor
+            if imt.string[:2] == "SA":
+                T = imt.period
+                mean[m] += self.kwargs['kwargs']['period_specific_df'].loc[:, f"adj_pSA_{str(T).replace('.', 'p')}"].values.astype(float)
+
             # In her email and slack post Gail mentioned that her upper and lower branches are as 1.28 times of the delta. So as to represent 10th and 90th percentile.
             # Consequently, the weights have also changed to 0.3, 0.4, 0.3.
             # The scale factor of 0.9 is applied based upon the discussion that it accounts for the reduction in epistemic uncertainty when no perfect correlation is assumed between rupture scenarios. See the note of Peter and Brendon on slack.

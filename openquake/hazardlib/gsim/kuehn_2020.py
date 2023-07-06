@@ -883,10 +883,27 @@ class KuehnEtAl2020SInter(GMPE):
                                           ctx, pga1100) + get_backarc_term(trt, imt, ctx)
                 idx = mean[m] < pga_soil
                 mean[m][idx] = pga_soil[idx]
+
+                #add the non-ergodic adjusment for T < 0.1
+                T = imt.period
+                mean[m] += self.kwargs['kwargs']['period_specific_df'].loc[:,
+                           f"adj_pSA_{str(T).replace('.', 'p')}"].values.astype(float)
+
             else:
                 # For PGV and Sa (T > 0.1 s)
                 mean[m] = get_mean_values(C, self.region, trt, m_break,
                                           ctx, pga1100) + get_backarc_term(trt, imt, ctx)
+
+                # add the non-ergodic adjusment for T > 0.1 (not for PGV)
+                if "SA" in imt.string:
+                    T = imt.period
+                    mean[m] += self.kwargs['kwargs']['period_specific_df'].loc[:,
+                               f"adj_pSA_{str(T).replace('.', 'p')}"].values.astype(float)
+
+                    mean[m] += self.kwargs['kwargs']['period_specific_df'].loc[:,
+                               f"adj_pSA_{str(T).replace('.', 'p')}"].values.astype(float)
+
+
             # Apply the sigma mu adjustment if necessary
             if self.sigma_mu_epsilon:
                 #[mag] = np.unique(np.round(ctx.mag, 2))

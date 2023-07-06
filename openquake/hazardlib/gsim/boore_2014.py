@@ -313,7 +313,8 @@ class BooreEtAl2014(GMPE):
             #add adjustment factor
             if imt.string[:2] == "SA":
                 T = imt.period
-                mean[m] += self.kwargs['kwargs']['period_specific_df'].loc[:, f"adj_pSA_{str(T).replace('.', 'p')}"]
+                adj = self.kwargs['kwargs']['period_specific_df'].loc[:, f"adj_pSA_{str(T).replace('.', 'p')}"].values.astype(float)
+                mean[m] += adj
 
             if self.sigma_mu_epsilon:
                 mean[m] += (self.sigma_mu_epsilon*get_epistemic_sigma(ctx))

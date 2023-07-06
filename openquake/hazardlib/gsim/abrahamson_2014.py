@@ -469,14 +469,15 @@ class AbrahamsonEtAl2014(GMPE):
             C = self.COEFFS[imt]
             # compute median sa on rock (vs30=1180m/s). Used for site response
             # term calculation
-            sa1180 = np.exp(_get_sa_at_1180(self.region, C, imt, ctx))
 
-            # adjust the reference rock value with non-ergodic site term so that
-            # the adjustment is accounted for in nonlinear site response model
+            # adjust the reference rock value with non-ergodic site term for SA imts so that
+            # the adjustment is accounted for in nonlinear site response model.
+            # need to do that inside np.exp otherwise adjustment factors of 0 will become 1.
             if imt.string[:2] == "SA":
                 T = imt.period
-                sa1180 += self.kwargs['kwargs']['period_specific_df'].loc[:, f"adj_pSA_{str(T).replace('.', 'p')}"]
-
+                sa1180 = np.exp(_get_sa_at_1180(self.region, C, imt, ctx) + self.kwargs['kwargs']['period_specific_df'].loc[:, f"adj_pSA_{str(T).replace('.', 'p')}"].values.astype(float))
+            else:
+                sa1180 = np.exp(_get_sa_at_1180(self.region, C, imt, ctx))
 
             # For debugging purposes
             # f1 = _get_basic_term(C, ctx)
@@ -499,7 +500,7 @@ class AbrahamsonEtAl2014(GMPE):
             #adjust the mean prediction with adjustment factor
             if imt.string[:2] == "SA":
                 T = imt.period
-                mean[m] += self.kwargs['kwargs']['period_specific_df'].loc[:, f"adj_pSA_{str(T).replace('.', 'p')}"]
+                mean[m] += self.kwargs['kwargs']['period_specific_df'].loc[:, f"adj_pSA_{str(T).replace('.', 'p')}"].values.astype(float)
 
             mean[m] += _get_regional_term(
                 self.region, C, imt, ctx.vs30, ctx.rrup)

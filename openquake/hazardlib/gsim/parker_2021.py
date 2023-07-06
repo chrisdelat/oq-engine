@@ -535,6 +535,12 @@ class ParkerEtAl2021SInter(GMPE):
             # The output is the desired median model prediction in LN units
             # Take the exponential to get PGA, PSA in g or the PGV in cm/s
             mean[m] = fp + fnl + fb + flin + fm + c0 + fd + fba
+
+            # add the non-ergodic adjustment factor
+            if imt.string[:2] == "SA":
+                T = imt.period
+                mean[m] += self.kwargs['kwargs']['period_specific_df'].loc[:, f"adj_pSA_{str(T).replace('.', 'p')}"].values.astype(float)
+
             if self.sigma_mu_epsilon:
                 # Apply an epistmic adjustment factor. Currently, its applied to only global model.
                 mean[m] += (self.sigma_mu_epsilon * get_sigma_epistemic(trt, self.region, imt))

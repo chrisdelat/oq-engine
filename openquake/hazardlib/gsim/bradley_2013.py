@@ -529,7 +529,7 @@ class Bradley2013(GMPE):
             # which adds to ln_y_ref
             if imt.string[:2] == "SA":
                 T = imt.period
-                ln_y_ref += self.kwargs['kwargs']['period_specific_df'].loc[:, f"adj_pSA_{str(T).replace('.', 'p')}"]
+                ln_y_ref += self.kwargs['kwargs']['period_specific_df'].loc[:, f"adj_pSA_{str(T).replace('.', 'p')}"].values.astype(float)
 
 
             # exp1 and exp2 are parts of eq. 7

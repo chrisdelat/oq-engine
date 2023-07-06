@@ -699,7 +699,13 @@ class AbrahamsonGulerce2020SInter(GMPE):
             C = self.COEFFS[imt]
             mean[m] = get_mean_acceleration(C, trt, self.region, ctx, pga1000,
                                             self.apply_usa_adjustment) + get_backarc_term(trt, imt, ctx)
+
+            # add the non-ergodic adjustment factor
+            if imt.string[:2] == "SA":
+                T = imt.period
+                mean[m] += self.kwargs['kwargs']['period_specific_df'].loc[:, f"adj_pSA_{str(T).replace('.', 'p')}"].values.astype(float)
             #mean[m] = get_backarc_term(trt, imt, ctx)
+
             if self.sigma_mu_epsilon:
                 # Apply an epistmic adjustment factor
                 mean[m] += (self.sigma_mu_epsilon *
