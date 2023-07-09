@@ -900,10 +900,6 @@ class KuehnEtAl2020SInter(GMPE):
                     mean[m] += self.kwargs['kwargs']['period_specific_df'].loc[:,
                                f"adj_pSA_{str(T).replace('.', 'p')}"].values.astype(float)
 
-                    mean[m] += self.kwargs['kwargs']['period_specific_df'].loc[:,
-                               f"adj_pSA_{str(T).replace('.', 'p')}"].values.astype(float)
-
-
             # Apply the sigma mu adjustment if necessary
             if self.sigma_mu_epsilon:
                 #[mag] = np.unique(np.round(ctx.mag, 2))
